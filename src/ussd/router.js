@@ -1,10 +1,13 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Incident = require('../models/Incident');
 const Alert = require('../models/Alert');
 const Contact = require('../models/Contact');
 const { v4: uuidv4 } = require('uuid');
 const { cache } = require('./sessionCache');
-const { WARDS } = require('../config/wards');
+const wards = require('../config/wards');
+const WARDS = wards.WARDS || [];
+console.log('Loaded wards:', WARDS);
 const { t } = require('./i18n');
 
 function normPhone(phone) {
@@ -88,8 +91,8 @@ async function ussdRouter(req, res) {
           await User.updateOne({ phone }, { $setOnInsert: { phone }, $set: { lang: newLang } }, { upsert: true });
         }
         // Get translation function and call it with the new language
-        const langToggledText = t(newLang,'langToggled');
-        return res.send(resp('CON', `${langToggledText(newLang)}\n\n${t(newLang,'appTitle')}\n${t(newLang,'root')}`));
+        const langToggledText = t(newLang,'langToggled')(newLang);
+        return res.send(resp('CON', `${langToggledText}\n\n${t(newLang,'appTitle')}\n${t(newLang,'root')}`));
       }
       case '1': {
         // Registration flow
@@ -102,39 +105,55 @@ async function ussdRouter(req, res) {
           if (!name || name.length < 2) {
             return res.send(resp('CON', t(lang,'enterName')));
           }
-          const wardsMenu = t(lang,'selectWard')(WARDS);
-          return res.send(resp('CON', wardsMenu));
+          return res.send(resp('CON', t(lang,'selectWard', WARDS)));
         }
         const wardIdx = parseInt(segs[2], 10);
         const ward = WARDS[wardIdx - 1];
         if (segs.length === 3) {
-          if (!ward) return res.send(resp('CON', t(lang,'selectWard')(WARDS)));
+          if (!ward) return res.send(resp('CON', t(lang,'selectWard', WARDS)));
           return res.send(resp('CON', t(lang,'enterVillage')));
         }
         const village = segs[3].trim();
         if (village.length > 24) return res.send(resp('CON', t(lang,'enterVillage')));
         if (segs.length === 4) {
-          const summary = t(lang,'regConfirm')({ name, ward, village });
-          return res.send(resp('CON', summary));
+          return res.send(resp('CON', t(lang,'regConfirm', { name, ward, village })));
         }
         const confirm = segs[4];
         if (confirm === '1') {
           try {
             console.log('Attempting registration with:', { phone, name, ward, village, lang });
-            const langToSave = lang;
-            const now = new Date();
-            await User.updateOne(
+            
+            // Check if MongoDB is connected
+            const dbConnection = await mongoose.connection;
+            console.log('Database connection state:', dbConnection.readyState);
+            
+            // Create user document
+            const userData = {
+              phone,
+              name,
+              ward,
+              village,
+              lang,
+              registeredAt: new Date()
+            };
+            console.log('Creating user with data:', userData);
+            
+            // Try to create or update the user
+            const user = await User.findOneAndUpdate(
               { phone },
-              { $set: { name, ward, village, lang: langToSave, registeredAt: now } },
-              { upsert: true }
+              { $set: userData },
+              { upsert: true, new: true }
             );
-            const msg = t(lang,'regSuccess')({ ward, village });
+            
+            console.log('User created/updated:', user);
+            
+            const msg = t(lang,'regSuccess', user);
             cache.set(doneKey, msg);
             console.log('Registration successful for:', phone);
             return res.send(resp('END', msg));
           } catch (error) {
             console.error('Registration error:', error);
-            return res.send(resp('END', t(lang,'error')));
+            return res.send(resp('END', 'Registration failed. Please try again.'));
           }
         } else {
           return res.send(resp('CON', t(lang,'enterName')));
@@ -245,27 +264,50 @@ async function ussdRouter(req, res) {
         return res.send(resp('END', doneMsg));
       }
       case '3': {
-        // Check Alerts
-        let idx = 1;
-        let ward = user?.ward;
-        if (!ward) {
-          if (segs.length === idx) {
-            return res.send(resp('CON', t(lang,'askWard')(WARDS)));
+        try {
+          // Check Alerts
+          let idx = 1;
+          let ward = user?.ward;
+          if (!ward) {
+            if (segs.length === idx) {
+              return res.send(resp('CON', t(lang,'askWard')(WARDS)));
+            }
+            const wIdx = parseInt(segs[idx], 10);
+            ward = WARDS[wIdx - 1];
+            if (!ward) return res.send(resp('CON', t(lang,'askWard')(WARDS)));
+            idx += 1;
           }
-          const wIdx = parseInt(segs[idx], 10);
-          ward = WARDS[wIdx - 1];
-          if (!ward) return res.send(resp('CON', t(lang,'askWard')(WARDS)));
-          idx += 1;
+          
+          console.log('Checking alerts for ward:', ward);
+          
+          // Find alert with detailed logging
+          const alert = await Alert.findOne({ ward }).lean();
+          console.log('Found alert for ward:', ward, 'Alert data:', alert);
+          
+          const alertData = alert ? { 
+            risk: alert.risk, 
+            window: alert.window, 
+            summary: lang === 'EN' ? alert.summaryEn : alert.summarySw 
+          } : null;
+          
+          console.log('Alert data being sent to template:', alertData);
+          const summary = t(lang,'alertsHeader')(alertData);
+          
+          if (segs.length === idx) {
+            return res.send(resp('CON', `${summary}\n${t(lang,'alertsOptions')}`));
+          }
+          
+          const choice = segs[idx];
+          if (choice === '1') {
+            console.log('SMS alert requested for:', { phone, ward });
+            return res.send(resp('END', 'SMS will be sent.'));
+          } else {
+            return res.send(resp('CON', `${t(lang,'appTitle')}\n${t(lang,'root')}`));
+          }
+        } catch (error) {
+          console.error('Alert check error:', error);
+          return res.send(resp('END', t(lang,'error')));
         }
-        
-        console.log('Checking alerts for ward:', ward);
-        const a = await Alert.findOne({ ward }).lean();
-        console.log('Found alert:', a);
-        const summary = t(lang,'alertsHeader')(a ? { 
-          risk: a.risk, 
-          window: a.window, 
-          summary: lang==='EN' ? a.summaryEn : a.summarySw 
-        } : null);
         if (segs.length === idx) {
           return res.send(resp('CON', `${summary}\n${t(lang,'alertsOptions')}`));
         }
