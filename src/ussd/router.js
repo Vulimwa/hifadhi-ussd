@@ -90,8 +90,8 @@ async function ussdRouter(req, res) {
         } else {
           await User.updateOne({ phone }, { $setOnInsert: { phone }, $set: { lang: newLang } }, { upsert: true });
         }
-        // Get translation function and call it with the new language
-        const langToggledText = t(newLang,'langToggled')(newLang);
+        // Get translation for the language toggle message
+        const langToggledText = t(newLang,'langToggled', newLang);
         return res.send(resp('CON', `${langToggledText}\n\n${t(newLang,'appTitle')}\n${t(newLang,'root')}`));
       }
       case '1': {
@@ -199,7 +199,7 @@ async function ussdRouter(req, res) {
         let village = user?.village;
         if (village) {
           if (segs.length === idx) {
-            return res.send(resp('CON', t(lang,'villageUseOrEdit')(village)));
+            return res.send(resp('CON', t(lang,'villageUseOrEdit', village)));
           }
           const useOrEdit = segs[idx];
           if (useOrEdit === '1') {
@@ -237,9 +237,8 @@ async function ussdRouter(req, res) {
         idx += 1;
 
         // Confirm
-        const summary = t(lang,'confirmIncident')({ species, urgency, type: typ, ward, village });
         if (segs.length === idx) {
-          return res.send(resp('CON', summary));
+          return res.send(resp('CON', t(lang,'confirmIncident', { species, urgency, type: typ, ward, village })));
         }
         const submit = segs[idx];
         if (submit !== '1') {
@@ -259,7 +258,7 @@ async function ussdRouter(req, res) {
         } catch (e) {}
 
         await Incident.create({ caseId, phone, userRef, species, urgency, type: typ, ward, village, note });
-        const doneMsg = t(lang,'incidentSaved')(caseId);
+        const doneMsg = t(lang,'incidentSaved', caseId);
         cache.set(doneKey, doneMsg);
         return res.send(resp('END', doneMsg));
       }
@@ -270,11 +269,11 @@ async function ussdRouter(req, res) {
           let ward = user?.ward;
           if (!ward) {
             if (segs.length === idx) {
-              return res.send(resp('CON', t(lang,'askWard')(WARDS)));
+              return res.send(resp('CON', t(lang,'askWard', WARDS)));
             }
             const wIdx = parseInt(segs[idx], 10);
             ward = WARDS[wIdx - 1];
-            if (!ward) return res.send(resp('CON', t(lang,'askWard')(WARDS)));
+            if (!ward) return res.send(resp('CON', t(lang,'askWard', WARDS)));
             idx += 1;
           }
           
@@ -291,7 +290,7 @@ async function ussdRouter(req, res) {
           } : null;
           
           console.log('Alert data being sent to template:', alertData);
-          const summary = t(lang,'alertsHeader')(alertData);
+          const summary = t(lang,'alertsHeader', alertData);
           
           if (segs.length === idx) {
             return res.send(resp('CON', `${summary}\n${t(lang,'alertsOptions')}`));
@@ -339,15 +338,15 @@ async function ussdRouter(req, res) {
         let ward = user?.ward;
         if (!ward) {
           if (segs.length === idx) {
-            return res.send(resp('CON', t(lang,'askWard')(WARDS)));
+            return res.send(resp('CON', t(lang,'askWard', WARDS)));
           }
           const wIdx = parseInt(segs[idx], 10);
           ward = WARDS[wIdx - 1];
-          if (!ward) return res.send(resp('CON', t(lang,'askWard')(WARDS)));
+          if (!ward) return res.send(resp('CON', t(lang,'askWard', WARDS)));
           idx += 1;
         }
         const c = await Contact.findOne({ ward }).lean();
-        const body = t(lang,'contacts')(c);
+        const body = t(lang,'contacts', c);
         if (segs.length === idx) {
           return res.send(resp('CON', body));
         }
