@@ -1,4 +1,4 @@
-# Hifadhi Link (USSD) — ERD and Flow Diagrams
+# Hifadhi Link (USSD) -ERD and Flow Diagrams
 
 This document provides visual diagrams of the data model (ERD) and each USSD flow so anyone can quickly understand how the system works by looking at it.
 
@@ -41,34 +41,34 @@ erDiagram
 
     User {
         string _id
-        string phone PK, unique
+        string phone
         string name
         string ward
         string village
-        enum   lang (EN,SW)
+        string lang
         date   registeredAt
         date   createdAt
         date   updatedAt
     }
     Incident {
         string _id
-        string caseId PK, unique
+        string caseId
         string phone
-        ObjectId userRef FK -> User._id
-        enum   species (elephant,buffalo,lion,other)
-        enum   urgency (now,today,24h)
-        enum   type (crop,livestock,fence,human)
+        string userRef
+        string species
+        string urgency
+        string type
         string ward
         string village
-        string note (<=80)
-        enum   status (new,ack,closed)
+        string note
+        string status
         date   createdAt
         date   updatedAt
     }
     Alert {
         string _id
-        string ward PK, unique
-        enum   risk (LOW,MED,HIGH)
+        string ward
+        string risk
         string window
         string summaryEn
         string summarySw
@@ -78,14 +78,14 @@ erDiagram
     }
     Contact {
         string _id
-        string ward PK, unique
+        string ward
         string kwsHotline
         string wardAdmin
         date   createdAt
         date   updatedAt
     }
     Ward {
-        string name PK  // Config enum: Sagalla, Marungu, Mbololo, Kasigau
+        string name
     }
 ```
 
@@ -96,97 +96,92 @@ Notes:
 ## Root Menu
 ```mermaid
 flowchart TD
-    A[HIFADHI LINK Root (CON)] -->|1| B[Register]
-    A -->|2| C[Report Incident]
-    A -->|3| D[Check Alerts]
-    A -->|4| E[Prevention Tips]
-    A -->|5| F[Emergency Contacts]
-    A -->|0| G[Toggle Language]
+    A[HIFADHI LINK Root (CON)] --> B[Register]
+    A --> C[Report Incident]
+    A --> D[Check Alerts]
+    A --> E[Prevention Tips]
+    A --> F[Emergency Contacts]
+    A --> G[Toggle Language]
 ```
 
-## Flow — Register (1)
+## Flow -Register (1)
 ```mermaid
 flowchart TD
-    A[Root -> 1 Register] --> B[Enter Full Name]
-    B -->|valid| C[Select Ward]
-    B -->|invalid| B
+    A[From Root: Register] --> B[Enter Full Name]
+    B --> C[Select Ward]
     C --> D[Enter Village]
-    D -->|<=24 chars| E[Confirm: name/ward/village]
-    D -->|>24| D
-    E -->|1 Yes| F[Upsert User in DB]
-    E -->|2 Edit| B
+    D --> E[Confirm: name/ward/village]
+    E --> F[Upsert User in DB]
     F --> G[END: Registration Success]
 ```
 
-## Flow — Report Incident (2)
+## Flow -Report Incident (2)
 ```mermaid
 flowchart TD
-    A[Root -> 2 Report] --> B[Species]
+    A[From Root: Report] --> B[Species]
     B --> C[Urgency]
     C --> D[Type]
     D --> E{User has Ward?}
-    E -->|Yes| G{User has Village?}
-    E -->|No| F[Select Ward]
+    E --> G{User has Village?}
+    E --> F[Select Ward]
     F --> G{User has Village?}
-    G -->|Yes| H[Village: 1 Use / 2 Edit]
-    G -->|No| I[Enter Village]
-    H -->|1 Use| J[Optional Note (or 0)]
-    H -->|2 Edit| I
+    G --> H[Village: Use or Edit]
+    H --> I[Enter Village]
     I --> J
     J --> K[Confirm summary]
-    K -->|1 Submit| L[Create Incident + caseId]
-    K -->|2 Cancel| M[END Invalid/Cancel]
+    K --> L[Create Incident + caseId]
+    K --> M[END Invalid/Cancel]
     L --> N[END: Saved Case ID]
 ```
 
-## Flow — Check Alerts (3)
+## Flow -Check Alerts (3)
 ```mermaid
 flowchart TD
-    A[Root -> 3 Alerts] --> B{User has Ward?}
-    B -->|Yes| C[Show Ward Alert Summary]
-    B -->|No| D[Select Ward]
+    A[From Root: Alerts] --> B{User has Ward?}
+    B --> C[Show Ward Alert Summary]
+    B --> D[Select Ward]
     D --> C
-    C --> E[1 SMS summary / 0 Back]
-    E -->|1| F[END: SMS will be sent]
-    E -->|0| G[Return to Root]
+    C --> E[SMS summary or Back]
+    E --> F[END: SMS will be sent]
+    E --> G[Return to Root]
 ```
 
-## Flow — Prevention Tips (4)
+## Flow -Prevention Tips (4)
 ```mermaid
 flowchart TD
-    A[Root -> 4 Tips] --> B[Show Tips]
-    B --> C[1 SMS me tips]
+    A[From Root: Tips] --> B[Show Tips]
+    B --> C[SMS me tips]
     C --> D[END: SMS will be sent]
 ```
 
-## Flow — Emergency Contacts (5)
+## Flow -Emergency Contacts (5)
 ```mermaid
 flowchart TD
-    A[Root -> 5 Contacts] --> B{User has Ward?}
-    B -->|Yes| C[Show KWS + Ward Admin]
-    B -->|No| D[Select Ward]
+    A[From Root: Contacts] --> B{User has Ward?}
+    B --> C[Show KWS + Ward Admin]
+    B --> D[Select Ward]
     D --> C
-    C --> E[1 SMS contacts]
+    C --> E[SMS contacts]
     E --> F[END: SMS will be sent]
 ```
 
-## Flow — Language Toggle (0)
+## Flow -Language Toggle (0)
 ```mermaid
 flowchart TD
-    A[Root -> 0 Language] --> B[Toggle EN ↔ SW]
+    A[From Root: Language] --> B[Toggle EN <-> SW]
     B --> C[Persist to User.lang]
-    C --> D[CON: Re‑show Root in new language]
+    C --> D[CON: Re-show Root in new language]
 ```
 
-## Admin — Seeding & Export
+## Admin -Seeding & Export
 ```mermaid
 flowchart TD
-    subgraph Admin API [/admin]
+    subgraph Admin_API
         A1[POST /alerts/seed] -->|upsert by ward| A2[(Alert)]
         B1[POST /contacts/seed] -->|upsert by ward| B2[(Contact)]
         C1[GET /export/incidents.csv] -->|CSV| C2[(Incident)]
     end
-    note right of Admin API: Header x-admin-token required
+    N[Header x-admin-token required]
 ```
 
 ## Where Things Live
@@ -198,4 +193,3 @@ flowchart TD
 ## How To View
 - GitHub and many editors render Mermaid code blocks directly.
 - If not, paste code blocks into an online Mermaid viewer to see the diagrams.
-
